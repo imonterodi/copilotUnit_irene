@@ -5,7 +5,7 @@ A super simple FastAPI application that allows students to view and sign up
 for extracurricular activities at Mergington High School.
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
 import os
@@ -41,6 +41,46 @@ activities = {
     }
 }
 
+# Additional activities (2 sports, 2 artistic, 2 intellectual)
+activities.update({
+    "Soccer Team": {
+        "description": "Join the school soccer team for training and matches",
+        "schedule": "Mondays and Thursdays, 4:00 PM - 6:00 PM",
+        "max_participants": 22,
+        "participants": ["alex@mergington.edu"]
+    },
+    "Swimming Club": {
+        "description": "Swim training and pool sessions for all levels",
+        "schedule": "Wednesdays, 5:00 PM - 6:30 PM",
+        "max_participants": 15,
+        "participants": []
+    },
+    "Art Club": {
+        "description": "Explore drawing, painting and mixed media projects",
+        "schedule": "Tuesdays, 3:30 PM - 5:00 PM",
+        "max_participants": 20,
+        "participants": ["mia@mergington.edu"]
+    },
+    "Choir": {
+        "description": "Vocal training and performance group for students",
+        "schedule": "Fridays, 3:45 PM - 5:15 PM",
+        "max_participants": 30,
+        "participants": []
+    },
+    "Debate Club": {
+        "description": "Practice debating skills and participate in competitions",
+        "schedule": "Thursdays, 4:00 PM - 5:30 PM",
+        "max_participants": 16,
+        "participants": ["liam@mergington.edu"]
+    },
+    "Math Olympiad": {
+        "description": "Advanced problem solving and contest preparation",
+        "schedule": "Wednesdays, 3:30 PM - 5:00 PM",
+        "max_participants": 12,
+        "participants": []
+    }
+})
+
 
 @app.get("/")
 def root():
@@ -62,6 +102,47 @@ def signup_for_activity(activity_name: str, email: str):
     # Get the specific activity
     activity = activities[activity_name]
 
-    # Add student
-    activity["participants"].append(email)
-    return {"message": f"Signed up {email} for {activity_name}"}
+    # Validate and normalize email
+    if not isinstance(email, str) or not email.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid email")
+    normalized = email.strip().lower()
+
+    # Check for duplicate registration (case-insensitive)
+    if any(p.strip().lower() == normalized for p in activity.get("participants", [])):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                            detail="Email already registered for this activity")
+
+    # Check capacity
+    max_participants = activity.get("max_participants", float("inf"))
+    if len(activity.get("participants", [])) >= max_participants:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Activity is full")
+
+    # Add student (store normalized email)
+    activity.setdefault("participants", []).append(normalized)
+    return {"message": f"Signed up {normalized} for {activity_name}"}
+
+
+@app.delete("/activities/{activity_name}/unregister")
+def unregister_from_activity(activity_name: str, email: str):
+    """Unregister a student from an activity"""
+    # Validate activity exists
+    if activity_name not in activities:
+        raise HTTPException(status_code=404, detail="Activity not found")
+
+    # Get the specific activity
+    activity = activities[activity_name]
+
+    # Validate and normalize email
+    if not isinstance(email, str) or not email.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid email")
+    normalized = email.strip().lower()
+
+    # Find and remove participant (case-insensitive)
+    participants = activity.get("participants", [])
+    for i, participant in enumerate(participants):
+        if participant.strip().lower() == normalized:
+            participants.pop(i)
+            return {"message": f"Unregistered {normalized} from {activity_name}"}
+
+    # Participant not found
+    raise HTTPException(status_code=404, detail="Participant not found in this activity")
